@@ -36,12 +36,12 @@ linters:
     - gocritic
     - gocyclo
     - godot
-    - goerr113
+    #- goerr113
     - gofmt
     - gofumpt
     - goimports
     - golint
-    - gomnd
+    #- gomnd
     - gomodguard
     - gosec
     - gosimple
@@ -51,7 +51,7 @@ linters:
     - maligned
     - misspell
     - nakedret
-    - nestif
+    #- nestif
     - noctx
     - nolintlint
     - prealloc
