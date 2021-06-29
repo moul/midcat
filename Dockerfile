@@ -5,7 +5,7 @@ ARG             VERSION
 
 # build
 FROM            golang:1.16.5-alpine as builder
-RUN             apk add --no-cache git gcc musl-dev make
+RUN             apk add --no-cache git gcc musl-dev make g++ alsa-lib-dev
 ENV             GO111MODULE=on
 WORKDIR         /go/src/moul.io/midcat
 COPY            go.* ./
@@ -27,5 +27,6 @@ LABEL           org.label-schema.build-date=$BUILD_DATE \
                 org.label-schema.cmd="docker run -i -t --rm moul/midcat" \
                 org.label-schema.help="docker exec -it $CONTAINER midcat --help"
 COPY            --from=builder /go/bin/midcat /bin/
+RUN             apk add --no-cache gcc alsa-lib
 ENTRYPOINT      ["/bin/midcat"]
 #CMD             []

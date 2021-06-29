@@ -23,7 +23,7 @@
 [embedmd]:# (.tmp/usage.txt console)
 ```console
 foo@bar:~$ midcat -h
-_     _            _
+        _     _            _
  _ __  (_) __| | __  __ _ | |_
 | '  \ | |/ _` |/ _|/ _` ||  _|
 |_|_|_||_|\__,_|\__|\__,_| \__|
@@ -31,7 +31,7 @@ _     _            _
 
 
 USAGE
-  midcat [FLAGS] <ADDRESS>[,OPTS] <ADDRESS>[,OPTS]
+  midcat [FLAGS] <ADDRESS>[,OPTS] [FILTERS] <ADDRESS>[,OPTS]
 
 FLAGS
   -debug false  debug mode
@@ -39,23 +39,17 @@ FLAGS
 ADDRESS
   midi        midi port id=FIRST
   -           stdio
-  pipe        echo/fifo
-  tcp         ...
-  tick        ...
-  rand        ...
-  udp         ...
-  websocket   ...
+  nop         dummy driver
 
 OPTS
-  debug       ...
-  reconnect   ...
-  bpm         ...
-  quantify    ...
-  filter      ...
+  TODO
 
 HARDWARE
   IN:  id=0 is-open=false name="IAC Driver Bus 1"
-  OUT: id=1 is-open=false name="IAC Driver Bus 1"
+  OUT: id=0 is-open=false name="IAC Driver Bus 1"
+
+FILTER
+  TODO
 ```
 
 ## Install

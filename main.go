@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"runtime"
 	"strings"
 
+	rungroup "github.com/oklog/run"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"gitlab.com/gomidi/midi"
-	"gitlab.com/gomidi/midi/writer"
-	"gitlab.com/gomidi/portmididrv"
+	"gitlab.com/gomidi/rtmididrv"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -45,7 +46,7 @@ func run(args []string) error {
 	root := &ffcli.Command{
 		Name:       "midcat",
 		FlagSet:    rootFs,
-		ShortUsage: "midcat [FLAGS] <ADDRESS>[,OPTS] <ADDRESS>[,OPTS]",
+		ShortUsage: "midcat [FLAGS] <ADDRESS>[,OPTS] [FILTERS] <ADDRESS>[,OPTS]",
 		Exec:       doRoot,
 		UsageFunc:  usage,
 	}
@@ -55,7 +56,6 @@ func run(args []string) error {
 
 	// init logger
 	{
-		rand.Seed(srand.Fast())
 		config := zapconfig.New().SetPreset("light-console")
 		if opts.Debug {
 			config = config.SetLevel(zapcore.DebugLevel)
@@ -68,6 +68,12 @@ func run(args []string) error {
 			return fmt.Errorf("logger init: %w", err)
 		}
 		opts.mainLogger = opts.rootLogger.Named("main")
+	}
+
+	// init runtime
+	{
+		runtime.GOMAXPROCS(1)
+		rand.Seed(srand.Fast())
 	}
 
 	// run
@@ -83,7 +89,7 @@ func run(args []string) error {
 func usage(c *ffcli.Command) string {
 	var b strings.Builder
 
-	fmt.Fprint(&b, motd.Default()+"\n\n")
+	fmt.Fprint(&b, "."+motd.Default()+"\n\n")
 
 	fmt.Fprint(&b, ffcli.DefaultUsageFunc(c)+"\n\n")
 
@@ -91,27 +97,31 @@ func usage(c *ffcli.Command) string {
 	// FIXME: dynamic
 	fmt.Fprintf(&b, "  midi        midi port id=FIRST\n")
 	fmt.Fprintf(&b, "  -           stdio\n")
-	fmt.Fprintf(&b, "  pipe        echo/fifo\n")
-	fmt.Fprintf(&b, "  tcp         ...\n")
-	fmt.Fprintf(&b, "  tick        ...\n")
-	fmt.Fprintf(&b, "  rand        ...\n")
-	fmt.Fprintf(&b, "  udp         ...\n")
-	fmt.Fprintf(&b, "  websocket   ...\n")
+	fmt.Fprintf(&b, "  nop         dummy driver\n")
+	// fmt.Fprintf(&b, "  keyboard\n")
+	// fmt.Fprintf(&b, "  pipe        echo/fifo\n")
+	// fmt.Fprintf(&b, "  tcp         ...\n")
+	// fmt.Fprintf(&b, "  tick        ...\n")
+	// fmt.Fprintf(&b, "  rand        ...\n")
+	// fmt.Fprintf(&b, "  udp         ...\n")
+	// fmt.Fprintf(&b, "  websocket   ...\n")
 	fmt.Fprintf(&b, "\n")
 
 	fmt.Fprintf(&b, "OPTS\n")
-	fmt.Fprintf(&b, "  debug       ...\n")
-	fmt.Fprintf(&b, "  reconnect   ...\n")
-	fmt.Fprintf(&b, "  bpm         ...\n")
-	fmt.Fprintf(&b, "  quantify    ...\n")
-	fmt.Fprintf(&b, "  filter      ...\n")
+	fmt.Fprintf(&b, "  TODO\n")
+	// fmt.Fprintf(&b, "  debug       ...\n")
+	// fmt.Fprintf(&b, "  reconnect   ...\n")
+	// fmt.Fprintf(&b, "  bpm         ...\n")
+	// fmt.Fprintf(&b, "  quantify    ...\n")
+	// fmt.Fprintf(&b, "  filter      ...\n")
 	fmt.Fprintf(&b, "\n")
 
 	fmt.Fprintf(&b, "HARDWARE\n")
-	drv, err := portmididrv.New()
+	drv, err := rtmididrv.New()
 	if err != nil {
 		fmt.Fprintf(&b, "  error: %v\n", err)
 	} else {
+		defer drv.Close()
 		var errs error
 		ins, err := drv.Ins()
 		if err != nil {
@@ -135,8 +145,13 @@ func usage(c *ffcli.Command) string {
 			fmt.Fprintf(&b, "error: %v\n", errs)
 		}
 	}
+	fmt.Fprintf(&b, "\n")
 
-	return strings.TrimSpace(b.String())
+	fmt.Fprintf(&b, "FILTER\n")
+	fmt.Fprintf(&b, "  TODO\n")
+	fmt.Fprintf(&b, "\n")
+
+	return strings.TrimSpace(b.String())[1:]
 }
 
 func doRoot(ctx context.Context, args []string) error {
@@ -175,11 +190,57 @@ func doRoot(ctx context.Context, args []string) error {
 
 	// pipe
 	{
-		fmt.Println(input, output)
-	}
+		ch := make(chan driver.Message)
 
-	_ = writer.New
-	return nil
+		var g rungroup.Group
+		ctx, cancel := context.WithCancel(ctx)
+
+		// output
+		{
+			g.Add(func() error {
+				if err := output.Open(); err != nil {
+					return fmt.Errorf("output: open: %w", err)
+				}
+				// FIXME: handle reconnect
+				for {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case msg := <-ch:
+						err := output.Send(msg)
+						if err != nil {
+							return fmt.Errorf("send error: %w", err)
+						}
+					}
+				}
+			}, func(err error) {
+				opts.mainLogger.Debug("close output", zap.Error(err))
+				cancel()
+				output.Close()
+			})
+		}
+
+		// input
+		{
+			g.Add(func() error {
+				err := input.Open(ctx, ch)
+				// FIXME: handle reconnect
+				if err != nil {
+					return fmt.Errorf("input: open: %w", err)
+				}
+				return nil
+			}, func(err error) {
+				opts.mainLogger.Debug("close input", zap.Error(err))
+				cancel()
+				input.Close()
+			})
+		}
+
+		// signal handling
+		// g.Add(rungroup.SignalHandler(ctx, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM))
+
+		return g.Run()
+	}
 }
 
 func initInputInstance(arg string) (driver.Input, error) {
