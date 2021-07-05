@@ -14,7 +14,6 @@ import (
 )
 
 func NewMidiInput(opts Opts) (Input, error) {
-	opts.Logger.Debug("NewMidiInput", zap.Any("args", opts.Args))
 	d := &midiInputDriver{}
 
 	var err error
@@ -38,8 +37,17 @@ func NewMidiInput(opts Opts) (Input, error) {
 			}
 		case "name":
 			d.portName = parts[1]
+		default:
+			return nil, fmt.Errorf("unknown option key: %q", arg)
 		}
 	}
+
+	opts.Logger.Debug(
+		"NewMidiInput",
+		zap.Any("args", opts.Args),
+		zap.String("name", d.portName),
+		zap.Int("id", d.portNum),
+	)
 
 	return d, nil
 }
