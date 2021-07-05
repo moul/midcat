@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 
 	"gitlab.com/gomidi/midi"
@@ -12,7 +14,6 @@ import (
 )
 
 func NewMidiInput(opts Opts) (Input, error) {
-	opts.Logger.Debug("NewMidiInput", zap.Any("args", opts.Args))
 	d := &midiInputDriver{}
 
 	var err error
@@ -22,8 +23,31 @@ func NewMidiInput(opts Opts) (Input, error) {
 		return nil, fmt.Errorf("portmididrv.New: %w", err)
 	}
 
-	d.portNum = 0   // FIXME: parse args
-	d.portName = "" // FIXME: parse args
+	args := strings.Split(opts.Args, ",")
+	for _, arg := range args {
+		parts := strings.SplitN(arg, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		switch parts[0] {
+		case "id":
+			d.portNum, err = strconv.Atoi(parts[1])
+			if err != nil {
+				return nil, fmt.Errorf("invalid ID: %q: %w", parts[1], err)
+			}
+		case "name":
+			d.portName = parts[1]
+		default:
+			return nil, fmt.Errorf("unknown option key: %q", arg)
+		}
+	}
+
+	opts.Logger.Debug(
+		"NewMidiInput",
+		zap.Any("args", opts.Args),
+		zap.String("name", d.portName),
+		zap.Int("id", d.portNum),
+	)
 
 	return d, nil
 }
